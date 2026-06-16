@@ -6,13 +6,13 @@ from utils import (total_sales, average_sales, to_grade, grade_to_incentive,
 
 st.set_page_config(page_title="매출 분석 대시보드", layout="wide")
 
-# 상단 배너 이미지 (banner.png 파일을 함께 둘 것)
+# 1. 존재하지 않는 width="stretch" 옵션 삭제 후 use_container_width=True 적용 (에러 해결)
 st.image("banner.png", use_container_width=True)
 st.title("지점 매출 분석 대시보드")
 
 QUARTERS = ["1분기", "2분기", "3분기"]
 
-# 처음 실행 시 샘플 지점 데이터를 세션에 넣어 둔다. (다시 실행돼도 유지) / 단위: 백만원
+# 처음 실행 시 샘플 지점 데이터를 세션에 넣어 둔다. (다시 실행돼도 유지)
 if "branches" not in st.session_state:
     st.session_state.branches = [
         {"지점": "강남점", "1분기": 150, "2분기": 130, "3분기": 140},
@@ -24,6 +24,23 @@ if "branches" not in st.session_state:
 
 branches = st.session_state.branches
 
+# 2. 탭과 내용이 섞여 화면이 깨지는 현상을 막기 위해 요약 지표를 최상단으로 분리 배치
+st.subheader("전체 요약")
+col1, col2, col3 = st.columns(3)
+col1.metric("지점 수", f"{len(branches)}개")
+
+if branches:
+    avgs = [average_sales(b) for b in branches]
+    overall = sum(avgs) / len(avgs)
+    col2.metric("전체 평균(분기)", round(overall, 2))
+    col3.metric("목표 달성률", f"{achievement_rate(branches):.1f}%")
+else:
+    col2.metric("전체 평균(분기)", 0)
+    col3.metric("목표 달성률", "0.0%")
+
+st.divider()
+
+# 탭 선언
 tab1, tab2, tab3, tab4 = st.tabs(["지점 입력", "지점별 실적", "분기별 통계", "순위 & 등급 분포"])
 
 # --- Tab 1 : 지점 추가 ---
@@ -33,18 +50,12 @@ with tab1:
     q1 = st.number_input("1분기 매출", 0, 1000, 0)
     q2 = st.number_input("2분기 매출", 0, 1000, 0)
     q3 = st.number_input("3분기 매출", 0, 1000, 0)
+    
     if st.button("추가"):
         branches.append({"지점": name, "1분기": q1, "2분기": q2, "3분기": q3})
         st.success(f"{name} 지점을 추가했습니다.")
-
-# --- 상단 요약 지표 ---
-col1, col2, col3 = st.columns(3)
-col1.metric("지점 수", f"{len(branches)}개")
-
-avgs = [average_sales(b) for b in branches]
-overall = sum(avgs) / len(avgs)
-col2.metric("전체 평균(분기)", round(overall, 2))
-col3.metric("목표 달성률", f"{achievement_rate(branches):.1f}%")
+        # 3. 데이터 추가 후 즉시 다른 탭의 실적표와 그래프에 반영되도록 화면 강제 새로고침
+        st.rerun()
 
 # --- Tab 2 : 지점별 실적표 ---
 with tab2:
@@ -71,7 +82,8 @@ with tab3:
         quarter = QUARTERS[i]
         with cols[i]:
             st.subheader(quarter)
-            st.write("평균: " + str(quarter_average(branches, quarter)))
+            # 4. 문자열과 숫자를 더해 TypeError가 발생하여 앱이 멈추던 증상을 f-string으로 해결
+            st.write(f"평균: {quarter_average(branches, quarter)}")
             st.write(f"최고: {quarter_top(branches, quarter)}")
 
     chart_data = []
@@ -84,10 +96,8 @@ with tab4:
     st.header("매출 순위")
     ranked = rank_list(branches)
     rank_table = []
-    rank = 1
-    for b in ranked:
+    for rank, b in enumerate(ranked, start=1):
         rank_table.append({"순위": rank, "지점": b["지점"], "총매출": total_sales(b)})
-        rank = rank + 1
     st.table(rank_table)
 
     st.header("등급 분포")
